@@ -1,342 +1,646 @@
 # File: README.md
 
-# Vibeverse Backend (Vercel Serverless)
+# Vibeverse Frontend
 
-Express API wrapped with `serverless-http` to run on **Vercel functions**.
+Production-ready, mobile-first React app (Vite + Tailwind). Connects to hidden API via `VITE_API_URL`. Includes pages: Feed, Explore, Communities, Pricing (PayPal), Profile, Settings, Auth.
 
-> ⚠️ Notes / Constraints on Vercel:
-> - **No local disk for uploads** → use S3/Cloudinary (this build disables file storage).
-> - **No WebSockets** → use polling or 3rd‑party Pusher/Ably (not included).
-> - **Cold starts** possible. Keep functions small.
-> - Use **MongoDB Atlas** for the database.
+## Quick Start
 
-If you need full Express with file uploads & sockets, deploy to **Render/Railway/Fly** instead; frontend can still be on Vercel.
-
-## Quick Start (local)
 ```bash
+# 1) Install
 npm i
+
+# 2) Env
 cp .env.example .env
-# set: MONGODB_URI, JWT_SECRET, PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, FRONTEND_URL
+# then set VITE_API_URL, VITE_PAYPAL_CLIENT_ID, VITE_SUPPORT_EMAIL, VITE_APP_NAME, VITE_FRONTEND_URL
+
+# 3) Run dev
 npm run dev
+
+# 4) Build
+npm run build
+
+# 5) Preview
+npm run preview
 ```
 
-## Deploy to Vercel
-1. Push this folder to **GitHub**.
-2. Vercel → New Project → Import Git repo.
-3. Set env vars (see `.env.example`).
-4. Deploy.
+## Deploy (Vercel)
+- Import repo → Vercel → add env vars → Deploy.
+- Attach domain `vibeverse.vip`.
 
 ---
 
 # File: package.json
 {
-  "name": "vibeverse-backend",
+  "name": "vibeverse-frontend",
+  "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vercel dev",
-    "start": "node api/index.js"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.5.2",
-    "node-fetch": "^3.3.2",
-    "serverless-http": "^3.2.0",
-    "uuid": "^9.0.1"
+    "@headlessui/react": "^1.7.19",
+    "@tanstack/react-query": "^5.51.1",
+    "axios": "^1.7.2",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.26.2"
   },
   "devDependencies": {
-    "vercel": "^39.1.0"
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "autoprefixer": "^10.4.19",
+    "eslint": "^9.9.0",
+    "eslint-config-standard-with-typescript": "^43.0.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-n": "^17.10.3",
+    "eslint-plugin-promise": "^7.1.0",
+    "postcss": "^8.4.41",
+    "tailwindcss": "^3.4.9",
+    "vite": "^5.4.1"
   }
-}
-
----
-
-# File: vercel.json
-{
-  "functions": {
-    "api/index.js": {
-      "memory": 512,
-      "maxDuration": 10
-    }
-  },
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.js" }
-  ]
 }
 
 ---
 
 # File: .env.example
-MONGODB_URI=mongodb+srv://USER:PASS@cluster0.xxxxx.mongodb.net/vibeverse
-JWT_SECRET=change_this
-PAYPAL_CLIENT_ID=your_paypal_live_client_id
-PAYPAL_CLIENT_SECRET=your_paypal_live_secret
-FRONTEND_URL=https://vibeverse.vip
-NODE_ENV=production
+VITE_API_URL=https://api.vibeverse.vip
+VITE_PAYPAL_CLIENT_ID=REPLACE_WITH_PRODUCTION_CLIENT_ID
+VITE_SUPPORT_EMAIL=james.capps@hotmail.com
+VITE_APP_NAME=Vibeverse
+VITE_FRONTEND_URL=https://vibeverse.vip
 
 ---
 
-# File: src/db.js
-import mongoose from 'mongoose'
+# File: index.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#6366F1" />
+    <meta name="description" content="Vibeverse — positivity, connection, and creativity." />
+    <title>Vibeverse</title>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      window.__VITE_PAYPAL_CLIENT_ID__ = "${import.meta?.env?.VITE_PAYPAL_CLIENT_ID || ''}";
+    </script>
+    <script defer src="https://www.paypal.com/sdk/js?client-id=REPLACE&currency=GBP" id="paypal-sdk"></script>
+  </head>
+  <body class="bg-gray-50">
+    <div id="root"></div>
+  </body>
+</html>
 
-let isConnected = false
-export async function connectDB(uri) {
-  if (isConnected) return
-  mongoose.set('strictQuery', true)
-  await mongoose.connect(uri, { dbName: 'vibeverse' })
-  isConnected = true
+---
+
+# File: vite.config.js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+})
+
+---
+
+# File: postcss.config.js
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
 }
 
 ---
 
-# File: src/models/User.js
-import { Schema, model, models } from 'mongoose'
-
-const UserSchema = new Schema({
-  username: { type: String, unique: true, required: true },
-  email: { type: String, unique: true, required: true },
-  password: { type: String, required: true },
-  avatar: { type: String },
-  bio: { type: String },
-  plan: { type: String, enum: ['free', 'plus', 'pro'], default: 'free' },
-  planExpiresAt: { type: Date, default: null },
-  createdAt: { type: Date, default: Date.now }
-})
-
-export default models.User || model('User', UserSchema)
-
----
-
-# File: src/models/Comment.js
-import { Schema, model, models } from 'mongoose'
-
-const CommentSchema = new Schema({
-  author: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  post: { type: Schema.Types.ObjectId, ref: 'VibePost', required: true },
-  content: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now }
-})
-
-export default models.Comment || model('Comment', CommentSchema)
-
----
-
-# File: src/models/VibePost.js
-import { Schema, model, models } from 'mongoose'
-
-const VibePostSchema = new Schema({
-  author: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String, required: true },
-  image: { type: String },
-  mood: { type: String },
-  likes: [{ type: Schema.Types.ObjectId, ref: 'User' }],
-  comments: [{ type: Schema.Types.ObjectId, ref: 'Comment' }],
-  createdAt: { type: Date, default: Date.now }
-})
-
-export default models.VibePost || model('VibePost', VibePostSchema)
-
----
-
-# File: src/middleware/auth.js
-import jwt from 'jsonwebtoken'
-import User from '../models/User.js'
-
-export async function auth(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '')
-  if (!token) return res.status(401).json({ error: 'No token' })
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET)
-    req.user = await User.findById(decoded.id).select('-password')
-    if (!req.user) return res.status(401).json({ error: 'Invalid user' })
-    next()
-  } catch (e) { return res.status(401).json({ error: 'Invalid token' }) }
+# File: tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{js,jsx}"],
+  theme: {
+    extend: {
+      colors: {
+        brand: {
+          50: '#EEF2FF', 100: '#E0E7FF', 200: '#C7D2FE', 300: '#A5B4FC', 400: '#818CF8',
+          500: '#6366F1', 600: '#4F46E5', 700: '#4338CA', 800: '#3730A3', 900: '#312E81'
+        }
+      },
+      borderRadius: { xl: '1rem', '2xl': '1.25rem' }
+    }
+  },
+  plugins: [],
 }
 
 ---
 
-# File: src/routes/auth.js
-import { Router } from 'express'
-import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
-import User from '../models/User.js'
+# File: src/main.jsx
+import React from 'react'
+import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import App from './App'
+import './styles.css'
 
-const router = Router()
+const queryClient = new QueryClient()
 
-router.post('/register', async (req, res) => {
-  const { username, email, password } = req.body
-  if (!username || !email || !password) return res.status(400).json({ error: 'Missing fields' })
-  try {
-    const exists = await User.findOne({ $or: [{ email }, { username }] })
-    if (exists) return res.status(400).json({ error: 'User exists' })
-    const hashed = await bcrypt.hash(password, 10)
-    const user = await User.create({ username, email, password: hashed })
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
-    res.json({ token, user: { id: user._id, username, email, plan: user.plan } })
-  } catch (e) { res.status(500).json({ error: 'Server error' }) }
-})
-
-router.post('/login', async (req, res) => {
-  const { email, password } = req.body
-  try {
-    const user = await User.findOne({ email })
-    if (!user) return res.status(400).json({ error: 'Invalid credentials' })
-    const ok = await bcrypt.compare(password, user.password)
-    if (!ok) return res.status(400).json({ error: 'Invalid credentials' })
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' })
-    res.json({ token, user: { id: user._id, username: user.username, email, plan: user.plan } })
-  } catch (e) { res.status(500).json({ error: 'Server error' }) }
-})
-
-export default router
+createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </QueryClientProvider>
+  </React.StrictMode>
+)
 
 ---
 
-# File: src/routes/vibes.js
-import { Router } from 'express'
-import { auth } from '../middleware/auth.js'
-import VibePost from '../models/VibePost.js'
+# File: src/styles.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-const router = Router()
+:root { color-scheme: light dark; }
+body { @apply text-gray-900; }
 
-router.get('/', async (_req, res) => {
-  const items = await VibePost.find().sort({ createdAt: -1 }).limit(50).populate('author', 'username')
-  res.json(items)
-})
-
-router.post('/', auth, async (req, res) => {
-  const { content, mood, image } = req.body
-  if (!content) return res.status(400).json({ error: 'Content required' })
-  const post = await VibePost.create({ author: req.user._id, content, mood, image })
-  res.status(201).json(post)
-})
-
-router.post('/:id/like', auth, async (req, res) => {
-  const post = await VibePost.findById(req.params.id)
-  if (!post) return res.status(404).json({ error: 'Not found' })
-  const has = post.likes.some(u => u.equals(req.user._id))
-  if (!has) post.likes.push(req.user._id)
-  await post.save()
-  res.json({ likes: post.likes.length })
-})
-
-export default router
+.container { @apply max-w-6xl mx-auto px-4; }
+.card { @apply bg-white rounded-2xl shadow-md; }
+.btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-semibold; }
+.btn-primary { @apply bg-brand-600 text-white hover:bg-brand-700; }
+.btn-ghost { @apply bg-gray-100 hover:bg-gray-200; }
+.input { @apply w-full border rounded-xl px-3 py-2; }
 
 ---
 
-# File: src/routes/plans.js
-import { Router } from 'express'
-import fetch from 'node-fetch'
-import { v4 as uuidv4 } from 'uuid'
-import { auth } from '../middleware/auth.js'
-import User from '../models/User.js'
+# File: src/App.jsx
+import { Routes, Route, Navigate } from 'react-router-dom'
+import Navbar from './components/Navbar'
+import Feed from './pages/Feed'
+import Explore from './pages/Explore'
+import Communities from './pages/Communities'
+import Pricing from './pages/Pricing'
+import Profile from './pages/Profile'
+import Settings from './pages/Settings'
+import Login from './pages/Login'
+import Register from './pages/Register'
 
-const router = Router()
+export default function App() {
+  return (
+    <div>
+      <Navbar />
+      <main className="container mt-6 mb-24">
+        <Routes>
+          <Route path="/" element={<Navigate to="/feed" replace />} />
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/explore" element={<Explore />} />
+          <Route path="/communities" element={<Communities />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+        </Routes>
+      </main>
+      <footer className="container text-center text-sm text-gray-500 py-6">
+        <p>© {new Date().getFullYear()} Vibeverse — Be kind, share good vibes.</p>
+        <p>Support: <a className="underline" href="mailto:{import.meta.env.VITE_SUPPORT_EMAIL}">{import.meta.env.VITE_SUPPORT_EMAIL}</a></p>
+      </footer>
+    </div>
+  )
+}
 
-const PLANS = [
-  { id: 'free', name: 'Free', price: 0, currency: 'GBP' },
-  { id: 'plus', name: 'Vibe Plus', price: 7.99, currency: 'GBP' },
-  { id: 'pro', name: 'Creator Pro', price: 19.99, currency: 'GBP' }
+---
+
+# File: src/components/Navbar.jsx
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+
+function Tab({ to, children }) {
+  return (
+    <NavLink to={to} className={({ isActive }) => `px-3 py-2 rounded-xl ${isActive ? 'bg-brand-600 text-white' : 'text-gray-700 hover:bg-gray-100'}`}>{children}</NavLink>
+  )
+}
+
+export default function Navbar() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const isAuth = !!localStorage.getItem('token')
+
+  return (
+    <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-40">
+      <div className="container flex items-center justify-between py-3">
+        <button onClick={() => navigate('/feed')} className="text-xl font-extrabold text-brand-700">Vibeverse</button>
+        <nav className="hidden md:flex gap-2">
+          <Tab to="/feed">Feed</Tab>
+          <Tab to="/explore">Explore</Tab>
+          <Tab to="/communities">Communities</Tab>
+          <Tab to="/pricing">Pricing</Tab>
+        </nav>
+        <div className="hidden md:flex gap-2">
+          {isAuth ? (
+            <>
+              <button className="btn btn-ghost" onClick={() => navigate('/profile')}>Profile</button>
+              <button className="btn btn-primary" onClick={() => navigate('/settings')}>Settings</button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-ghost" onClick={() => navigate('/login')}>Login</button>
+              <button className="btn btn-primary" onClick={() => navigate('/register')}>Join</button>
+            </>
+          )}
+        </div>
+        <button className="md:hidden btn btn-ghost" onClick={() => setMenuOpen(v => !v)}>☰</button>
+      </div>
+      {menuOpen && (
+        <div className="md:hidden container pb-4 flex flex-col gap-2">
+          <Tab to="/feed">Feed</Tab>
+          <Tab to="/explore">Explore</Tab>
+          <Tab to="/communities">Communities</Tab>
+          <Tab to="/pricing">Pricing</Tab>
+          {isAuth ? (
+            <>
+              <Tab to="/profile">Profile</Tab>
+              <Tab to="/settings">Settings</Tab>
+            </>
+          ) : (
+            <>
+              <Tab to="/login">Login</Tab>
+              <Tab to="/register">Join</Tab>
+            </>
+          )}
+        </div>
+      )}
+      {/* Mobile bottom bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around py-2 z-40">
+        {[
+          { to: '/feed', label: 'Feed' },
+          { to: '/explore', label: 'Explore' },
+          { to: '/communities', label: 'Tribes' },
+          { to: '/pricing', label: 'Pricing' },
+        ].map(i => (
+          <NavLink key={i.to} to={i.to} className={({ isActive }) => `px-3 py-1 rounded-xl text-sm ${isActive ? 'bg-brand-600 text-white' : 'text-gray-700'}`}>{i.label}</NavLink>
+        ))}
+      </nav>
+    </header>
+  )
+}
+
+---
+
+# File: src/components/VibeForm.jsx
+import { useState } from 'react'
+
+export default function VibeForm({ onCreate }) {
+  const [content, setContent] = useState('')
+  const [mood, setMood] = useState('')
+  const [file, setFile] = useState(null)
+
+  function submit(e) {
+    e.preventDefault()
+    onCreate?.({ content, mood, file })
+    setContent(''); setMood(''); setFile(null)
+  }
+
+  return (
+    <form onSubmit={submit} className="card p-4 mb-4">
+      <textarea className="input h-24" placeholder="What's your vibe today?" value={content} onChange={e=>setContent(e.target.value)} required />
+      <div className="flex gap-2 mt-2">
+        <input className="input" placeholder="Mood (e.g., Inspired)" value={mood} onChange={e=>setMood(e.target.value)} />
+        <input type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} />
+      </div>
+      <div className="mt-3 flex justify-end">
+        <button className="btn btn-primary w-full md:w-auto">Share Vibe</button>
+      </div>
+    </form>
+  )
+}
+
+---
+
+# File: src/components/VibeCard.jsx
+export default function VibeCard({vibe, onLike}){
+  return (
+    <article className="card p-4 mb-4">
+      <header className="flex items-center gap-3 mb-2">
+        <div className="h-10 w-10 rounded-full bg-brand-200" />
+        <div>
+          <div className="font-semibold">{vibe.author}</div>
+          <div className="text-xs text-gray-500">{new Date(vibe.createdAt).toLocaleString()}</div>
+        </div>
+        <span className="ml-auto text-xs px-2 py-1 bg-brand-50 text-brand-700 rounded-full">{vibe.mood || '—'}</span>
+      </header>
+      <p className="mb-3">{vibe.content}</p>
+      {vibe.image && <img className="rounded-xl mb-3" src={vibe.image} alt="vibe" />}
+      <div className="flex gap-3 text-sm">
+        <button className="btn btn-ghost" onClick={()=>onLike?.(vibe.id)}>❤️ {vibe.likes}</button>
+        <button className="btn btn-ghost">💬 {vibe.comments}</button>
+        <button className="btn btn-ghost">↗️ Share</button>
+      </div>
+    </article>
+  )
+}
+
+---
+
+# File: src/components/PayPalButton.jsx
+import { useEffect, useRef } from 'react'
+
+export default function PayPalButton({ planId='plus', onApproved }){
+  const ref = useRef(null)
+
+  useEffect(()=>{
+    const script = document.getElementById('paypal-sdk')
+    const clientId = import.meta.env.VITE_PAYPAL_CLIENT_ID
+    if (script && clientId && script.src.includes('REPLACE')) {
+      script.src = `https://www.paypal.com/sdk/js?client-id=${clientId}&currency=GBP`
+    }
+    const tryRender = () => {
+      if (!window.paypal || !ref.current) return setTimeout(tryRender, 200)
+      window.paypal.Buttons({
+        style: { shape: 'pill', layout: 'horizontal' },
+        createOrder: async () => {
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/plans/subscribe`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')||''}` },
+              body: JSON.stringify({ planId })
+            })
+            const data = await res.json()
+            if (!res.ok) throw new Error(data?.error || 'Failed to create order')
+            const url = new URL(data.approvalUrl)
+            const orderId = url.searchParams.get('token')
+            return orderId
+          } catch (e) {
+            alert(e.message)
+            throw e
+          }
+        },
+        onApprove: async (data) => {
+          try {
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/plans/capture`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')||''}` },
+              body: JSON.stringify({ orderId: data.orderID, planId })
+            })
+            const ok = await res.json()
+            if (ok.success) onApproved?.()
+            else alert('Payment not completed')
+          } catch (e) { alert(e.message) }
+        }
+      }).render(ref.current)
+    }
+    tryRender()
+  }, [planId])
+
+  return <div ref={ref} />
+}
+
+---
+
+# File: src/api/client.js
+import axios from 'axios'
+
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL })
+
+api.interceptors.request.use(cfg => {
+  const t = localStorage.getItem('token')
+  if (t) cfg.headers.Authorization = `Bearer ${t}`
+  return cfg
+})
+
+export default api
+
+---
+
+# File: src/pages/Feed.jsx
+import { useState } from 'react'
+import VibeForm from '../components/VibeForm'
+import VibeCard from '../components/VibeCard'
+
+const seed = [
+  { id: '1', author: 'Luna', content: 'Grateful for small wins 🌱', mood: 'Grateful', likes: 12, comments: 4, createdAt: Date.now()-3600000 },
+  { id: '2', author: 'Kai', content: 'Deep focus day. Let’s go!', mood: 'Focused', likes: 5, comments: 1, createdAt: Date.now()-7200000 },
 ]
 
-const PAYPAL_API = 'https://api-m.paypal.com'
+export default function Feed(){
+  const [items, setItems] = useState(seed)
 
-async function getToken() {
-  const res = await fetch(`${PAYPAL_API}/v1/oauth2/token`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': 'Basic ' + Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_CLIENT_SECRET}`).toString('base64')
-    },
-    body: 'grant_type=client_credentials'
-  })
-  const json = await res.json()
-  return json.access_token
+  function create({ content, mood, file }){
+    const url = file ? URL.createObjectURL(file) : null
+    setItems([{ id: crypto.randomUUID(), author: 'You', content, mood, image: url, likes: 0, comments: 0, createdAt: Date.now() }, ...items])
+  }
+
+  function like(id){
+    setItems(prev => prev.map(v => v.id===id? { ...v, likes: v.likes+1 } : v))
+  }
+
+  return (
+    <section>
+      <VibeForm onCreate={create} />
+      {items.map(v => <VibeCard key={v.id} vibe={v} onLike={like} />)}
+    </section>
+  )
 }
 
-router.get('/', (_req, res) => res.json(PLANS))
+---
 
-router.post('/subscribe', auth, async (req, res) => {
-  const { planId } = req.body
-  const plan = PLANS.find(p => p.id === planId && p.price > 0)
-  if (!plan) return res.status(400).json({ error: 'Invalid plan' })
-  const token = await getToken()
-  const r = await fetch(`${PAYPAL_API}/v2/checkout/orders`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({
-      intent: 'CAPTURE',
-      purchase_units: [{
-        reference_id: uuidv4(),
-        description: plan.name,
-        amount: { currency_code: plan.currency, value: plan.price.toFixed(2) }
-      }],
-      application_context: {
-        return_url: `${process.env.FRONTEND_URL}/pricing/success?plan=${planId}`,
-        cancel_url: `${process.env.FRONTEND_URL}/pricing/cancel?plan=${planId}`,
-        brand_name: 'Vibeverse'
-      }
-    })
-  })
-  const data = await r.json()
-  const approval = data.links?.find(l => l.rel === 'approve')?.href
-  if (!approval) return res.status(500).json({ error: 'PayPal order failed' })
-  res.json({ approvalUrl: approval })
-})
-
-router.post('/capture', auth, async (req, res) => {
-  const { orderId, planId } = req.body
-  const token = await getToken()
-  const r = await fetch(`${PAYPAL_API}/v2/checkout/orders/${orderId}/capture`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
-  })
-  const data = await r.json()
-  if (data.status === 'COMPLETED') {
-    const user = await User.findByIdAndUpdate(req.user._id, { plan: planId }, { new: true })
-    return res.json({ success: true, plan: user.plan })
-  }
-  res.status(400).json({ error: 'Payment not completed' })
-})
-
-export default router
+# File: src/pages/Explore.jsx
+const tags = ['Mindful', 'Creative', 'Uplifting', 'Chill', 'Focused', 'Playful']
+export default function Explore(){
+  return (
+    <section className="grid md:grid-cols-2 gap-4">
+      {tags.map(t => (
+        <div key={t} className="card p-6">
+          <h3 className="text-lg font-bold mb-1">#{t}</h3>
+          <p className="text-gray-600">Discover trending vibes in {t}.</p>
+        </div>
+      ))}
+    </section>
+  )
+}
 
 ---
 
-# File: src/app.js
-import express from 'express'
-import cors from 'cors'
-import authRoutes from './routes/auth.js'
-import vibeRoutes from './routes/vibes.js'
-import planRoutes from './routes/plans.js'
-
-const app = express()
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }))
-app.use(express.json())
-
-app.get('/api/health', (_req, res) => res.json({ ok: true }))
-app.use('/api/auth', authRoutes)
-app.use('/api/vibes', vibeRoutes)
-app.use('/api/plans', planRoutes)
-
-export default app
+# File: src/pages/Communities.jsx
+const groups = [
+  { id: 'g1', name: 'Creators Unite', members: 3412, about: 'Supportive hub for makers.' },
+  { id: 'g2', name: 'Daily Gratitude', members: 1098, about: 'Share wins, inspire others.' },
+  { id: 'g3', name: 'Focus Club', members: 2210, about: 'Deep work accountability.' },
+]
+export default function Communities(){
+  return (
+    <section className="grid md:grid-cols-3 gap-4">
+      {groups.map(g => (
+        <div key={g.id} className="card p-6">
+          <h3 className="text-lg font-bold">{g.name}</h3>
+          <p className="text-sm text-gray-600">{g.about}</p>
+          <div className="mt-3 text-sm">{g.members.toLocaleString()} members</div>
+          <button className="btn btn-primary w-full mt-3">Join</button>
+        </div>
+      ))}
+    </section>
+  )
+}
 
 ---
 
-# File: api/index.js
-import serverless from 'serverless-http'
-import app from '../src/app.js'
-import { connectDB } from '../src/db.js'
+# File: src/pages/Pricing.jsx
+import PayPalButton from '../components/PayPalButton'
 
-let handler
+const plans = [
+  { id: 'free', name: 'Free', price: '£0/month', features: ['Core features', 'Join communities', 'Post & explore'], cta: 'Current Plan', disabled: true },
+  { id: 'plus', name: 'Vibe Plus', price: '£7.99/month', features: ['Customization', 'Priority support', 'Ad-free', 'Premium content'] },
+  { id: 'pro', name: 'Creator Pro', price: '£19.99/month', features: ['Analytics', 'Monetization', 'Early features', 'VIP support', 'Extra storage'] },
+]
 
-export default async function(req, res) {
-  if (!handler) {
-    await connectDB(process.env.MONGODB_URI)
-    handler = serverless(app)
+export default function Pricing(){
+  return (
+    <section>
+      <header className="text-center mb-6">
+        <h1 className="text-3xl font-extrabold">Vibeverse Pricing Plans</h1>
+        <p className="text-gray-600">No contracts. Cancel anytime.</p>
+      </header>
+      <div className="grid md:grid-cols-3 gap-4">
+        {plans.map(p => (
+          <div key={p.id} className="card p-6 flex flex-col">
+            <h3 className="text-xl font-bold">{p.name}</h3>
+            <p className="text-2xl mt-1">{p.price}</p>
+            <ul className="mt-3 space-y-1 text-sm text-gray-700 list-disc list-inside">
+              {p.features.map(f => <li key={f}>{f}</li>)}
+            </ul>
+            <div className="mt-auto pt-4">
+              {p.id === 'free' ? (
+                <button className="btn btn-ghost w-full" disabled>Current Plan</button>
+              ) : (
+                <PayPalButton planId={p.id} onApproved={()=>alert('Plan upgraded!')} />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+---
+
+# File: src/pages/Profile.jsx
+export default function Profile(){
+  const user = { name: 'You', bio: 'Riding the vibe wave ✨', plan: 'free' }
+  return (
+    <section className="grid md:grid-cols-3 gap-4">
+      <div className="card p-6">
+        <div className="h-24 w-24 rounded-full bg-brand-300 mb-3" />
+        <h2 className="text-xl font-bold">{user.name}</h2>
+        <p className="text-sm text-gray-600">{user.bio}</p>
+        <span className="mt-2 inline-block text-xs bg-brand-50 text-brand-700 px-2 py-1 rounded-full">Plan: {user.plan}</span>
+      </div>
+      <div className="md:col-span-2 card p-6">
+        <h3 className="text-lg font-bold mb-3">Your activity</h3>
+        <p className="text-gray-600">Your latest vibes will appear here.</p>
+      </div>
+    </section>
+  )
+}
+
+---
+
+# File: src/pages/Settings.jsx
+export default function Settings(){
+  return (
+    <section className="max-w-xl mx-auto card p-6">
+      <h2 className="text-xl font-bold mb-3">Settings</h2>
+      <label className="block mb-3">
+        <span className="text-sm">Display Name</span>
+        <input className="input mt-1" placeholder="Your display name" />
+      </label>
+      <label className="block mb-3">
+        <span className="text-sm">Bio</span>
+        <textarea className="input mt-1" placeholder="A short bio" />
+      </label>
+      <button className="btn btn-primary">Save</button>
+    </section>
+  )
+}
+
+---
+
+# File: src/pages/Login.jsx
+import { useState } from 'react'
+import api from '../api/client'
+import { useNavigate } from 'react-router-dom'
+
+export default function Login(){
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+
+  async function submit(e){
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const { data } = await api.post('/auth/login', { email, password })
+      localStorage.setItem('token', data.token)
+      navigate('/feed')
+    } catch (e) {
+      alert('Login failed')
+    } finally { setLoading(false) }
   }
-  return handler(req, res)
+
+  return (
+    <section className="max-w-md mx-auto card p-6">
+      <h1 className="text-xl font-bold mb-3">Welcome back</h1>
+      <form onSubmit={submit} className="space-y-3">
+        <input className="input" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <input className="input" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
+        <button className="btn btn-primary w-full" disabled={loading}>{loading? 'Loading...' : 'Login'}</button>
+      </form>
+    </section>
+  )
+}
+
+---
+
+# File: src/pages/Register.jsx
+import { useState } from 'react'
+import api from '../api/client'
+import { useNavigate } from 'react-router-dom'
+
+export default function Register(){
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const navigate = useNavigate()
+
+  async function submit(e){
+    e.preventDefault()
+    setLoading(true)
+    try {
+      const { data } = await api.post('/auth/register', { username, email, password })
+      localStorage.setItem('token', data.token)
+      navigate('/feed')
+    } catch (e) {
+      alert('Registration failed')
+    } finally { setLoading(false) }
+  }
+
+  return (
+    <section className="max-w-md mx-auto card p-6">
+      <h1 className="text-xl font-bold mb-3">Join Vibeverse</h1>
+      <form onSubmit={submit} className="space-y-3">
+        <input className="input" placeholder="Username" value={username} onChange={e=>setUsername(e.target.value)} required />
+        <input className="input" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} required />
+        <input className="input" type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} required />
+        <button className="btn btn-primary w-full" disabled={loading}>{loading? 'Loading...' : 'Create account'}</button>
+      </form>
+    </section>
+  )
 }
