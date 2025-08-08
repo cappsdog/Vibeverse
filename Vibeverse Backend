@@ -1,6 +1,6 @@
 # File: README.md
 
-# VibeverseBackend (Vercel Serverless)
+# VibeverseBackend 
 
 Express API wrapped with `serverless-http` to run on **Vercel functions**.
 
